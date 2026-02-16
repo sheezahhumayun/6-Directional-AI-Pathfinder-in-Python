@@ -20,6 +20,53 @@ class AIPathfinder:
         for r in range(2, self.size - 2):
             self.obstacles.add((r, mid))
             self.grid[r, mid] = -1
+    def get_neighbors(self, node):
+        r, c = node
+        directions = [
+            (-1, 0),  # 1. Up
+            (0, 1),   # 2. Right
+            (1, 0),   # 3. Bottom
+            (1, 1),   # 4. Bottom-Right (Diagonal)
+            (0, -1),  # 5. Left
+            (-1, -1)  # 6. Top-Left (Diagonal)
+        ]
+        
+        neighbors = []
+        for dr, dc in directions:
+            nr, nc = r + dr, c + dc
+            if 0 <= nr < self.size and 0 <= nc < self.size and (nr, nc) not in self.obstacles:
+                neighbors.append((nr, nc))
+        return neighbors
+
+    def spawn_dynamic_obstacle(self, current_path):
+        if random.random() < self.p_dynamic:
+            r, c = random.randint(0, self.size-1), random.randint(0, self.size-1)
+            if (r, c) not in [self.start, self.target] and (r, c) not in self.obstacles:
+                self.obstacles.add((r, c))
+                self.grid[r, c] = -1
+                print(f"!!! Dynamic Obstacle spawned at {r, c} !!!")
+                
+                if current_path and (r, c) in current_path:
+                    print("Path Blocked! Re-planning...")
+                    return True
+        return False
+
+    def visualize(self, explored, frontier, path=None, title="AI Pathfinding"):
+        plt.clf()
+        display_grid = np.copy(self.grid)
+        for node in explored: display_grid[node] = 2  
+        for node in frontier: 
+            if isinstance(node, tuple): display_grid[node] = 1 
+        if path:
+            for node in path: display_grid[node] = 3 
+        
+        display_grid[self.start] = 4 
+        display_grid[self.target] = 5 
+        
+        plt.imshow(display_grid, cmap='tab20c')
+        plt.title(title)
+        plt.pause(0.05)
+
     def bfs(self):
         queue = deque([self.start])
         came_from = {self.start: None}
@@ -118,3 +165,36 @@ class AIPathfinder:
                     b_queue.append(nxt)
             self.visualize(f_explored | b_explored, list(f_queue) + list(b_queue), title="Bidirectional Search")
         return None, set()
+
+    def reconstruct(self, came_from):
+        path, curr = [], self.target
+        while curr:
+            path.append(curr); curr = came_from.get(curr)
+        return path[::-1]
+
+    def reconstruct_bidir(self, f_frontier, b_frontier, f_meet, b_meet):
+        p1, curr = [], f_meet
+        while curr: p1.append(curr); curr = f_frontier.get(curr)
+        p2, curr = [], b_meet
+        while curr: p2.append(curr); curr = b_frontier.get(curr)
+        return p1[::-1] + p2
+
+if __name__ == "__main__":
+    print("Select Algorithm:\n1. BFS\n2. DFS\n3. UCS\n4. DLS\n5. IDDFS\n6. Bidirectional")
+    choice = input("Enter number: ")
+    
+    app = AIPathfinder(size=12)
+    algos = {"1": app.bfs, "2": app.dfs, "3": app.ucs, "4": lambda: app.dls(10), "5": app.iddfs, "6": app.bidirectional}
+    
+    if choice in algos:
+        path, explored = algos[choice]()
+        if path:
+            for i in range(len(path)):
+                if app.spawn_dynamic_obstacle(path[i:]):
+                    print("Re-calculating due to dynamic hurdle...")
+                    break
+            app.visualize(explored, [], path=path)
+            print("Path Found!")
+            plt.show()
+        else:
+            print("No path possible.")
